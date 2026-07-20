@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Patient Records</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  body { margin: 0; background: #F6F3EA; font-family: 'Helvetica Neue', Arial, sans-serif; color: #232323; }
+  input, select { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const BASE_URL = "http://127.0.0.1:8000";
+const ink = "#232323", paper = "#F6F3EA", card = "#FCFAF4", line = "#D9D3C4";
+const forest = "#2F5233", forestDark = "#1F3A22", rust = "#B33A3A", muted = "#7A7566";
+
+const TABS = [
+  { id: "all", label: "All patients" },
+  { id: "view", label: "Find" },
+  { id: "sort", label: "Sort" },
+  { id: "add", label: "Add" },
+  { id: "update", label: "Update" },
+  { id: "delete", label: "Delete" },
+];
+
+const inputStyle = {
+  width: "100%", boxSizing: "border-box", padding: "9px 11px",
+  border: `1px solid ${line}`, borderRadius: 5, fontSize: 14.5,
+  background: "#fff", color: ink,
+};
+
+function Btn({ children, onClick, variant = "solid", disabled, type = "button" }) {
+  const base = {
+    padding: "9px 18px", borderRadius: 5, fontSize: 14, fontWeight: 600,
+    cursor: disabled ? "not-allowed" : "pointer", border: "1px solid transparent",
+    opacity: disabled ? 0.5 : 1,
+  };
+  const styles = {
+    solid: { ...base, background: forest, color: "#fff" },
+    danger: { ...base, background: rust, color: "#fff" },
+    ghost: { ...base, background: "transparent", color: forestDark, borderColor: line },
+  };
+  return <button type={type} onClick={onClick} disabled={disabled} style={styles[variant]}>{children}</button>;
+}
+
+function Field({ label, children }) {
+  return (
+    <label style={{ display: "block", marginBottom: 14 }}>
+      <span style={{ display: "block", fontSize: 12, letterSpacing: 0.4, color: muted, marginBottom: 5, textTransform: "uppercase" }}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function Toast({ toast, onClose }) {
+  if (!toast) return null;
+  const good = toast.type === "success";
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8,
+      background: good ? "#EAF2E7" : "#FBEAEA",
+      border: `1px solid ${good ? forest : rust}`,
+      color: good ? forestDark : rust,
+      borderRadius: 6, padding: "10px 14px", marginBottom: 16, fontSize: 13.5,
+    }}>
+      <span style={{ flex: 1 }}>{toast.msg}</span>
+      <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "inherit" }}>x</button>
+    </div>
+  );
+}
+
+function PatientTab({ id, info }) {
+  const verdictColor = {
+    Underweight: "#B38A2A", Normal: forestDark, Overweight: "#B38A2A", Obese: rust,
+  }[info.verdict] || muted;
+  return (
+    <div style={{ position: "relative", marginBottom: 22 }}>
+      <div style={{
+        position: "absolute", top: -12, left: 18, background: forestDark, color: "#F6F3EA",
+        fontFamily: "monospace", fontSize: 12.5, padding: "4px 12px", borderRadius: "4px 4px 0 0", letterSpacing: 0.5,
+      }}>{id}</div>
+      <div style={{ background: card, border: `1px solid ${line}`, borderRadius: "2px 8px 8px 8px", padding: "22px 20px 18px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontFamily: "Georgia, serif", fontSize: 19 }}>{info.name}</div>
+            <div style={{ fontSize: 13, color: muted }}>{info.city} · {info.age} yrs · {info.gender}</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 22, fontFamily: "monospace" }}>{info.bmi}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: verdictColor }}>{info.verdict}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 24, fontSize: 13, color: muted, borderTop: `1px solid ${line}`, paddingTop: 10 }}>
+          <span>Height {info.height} m</span>
+          <span>Weight {info.weight} kg</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AllPatientsView({ notify }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${BASE_URL}/view`);
+      if (r.ok) setData(await r.json());
+      else notify("error", `Error ${r.status} loading patients.`);
+    } catch {
+      notify("error", "Couldn't reach the API. Is it running, and is CORS enabled?");
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <Btn variant="ghost" onClick={fetchAll}>Refresh</Btn>
+      </div>
+      {loading && <p style={{ color: muted, fontSize: 14 }}>Loading…</p>}
+      {!loading && data && Object.keys(data).length === 0 && <p style={{ color: muted, fontSize: 14 }}>No patients on file yet.</p>}
+      {!loading && data && Object.entries(data).map(([id, info]) => <PatientTab key={id} id={id} info={info} />)}
+    </div>
+  );
+}
+
+function FindView({ notify }) {
+  const [ids, setIds] = useState("");
+  const [results, setResults] = useState(null);
+
+  const search = async () => {
+    if (!ids.trim()) return notify("error", "Enter at least one patient ID.");
+    try {
+      const r = await fetch(`${BASE_URL}/patient/${ids.trim()}`);
+      if (r.ok) setResults(await r.json());
+      else if (r.status === 404) { setResults(null); notify("error", "Patient not found."); }
+      else notify("error", `Error ${r.status}.`);
+    } catch {
+      notify("error", "Couldn't reach the API.");
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <input style={inputStyle} placeholder="P001,P002" value={ids} onChange={e => setIds(e.target.value)} />
+        <Btn onClick={search}>Find</Btn>
+      </div>
+      {results && Object.entries(results).map(([id, info]) => <PatientTab key={id} id={id} info={info} />)}
+    </div>
+  );
+}
+
+const th = { textAlign: "left", fontSize: 11.5, letterSpacing: 0.4, color: muted, textTransform: "uppercase", padding: "8px 10px", borderBottom: `1px solid ${line}` };
+const td = { padding: "9px 10px", fontSize: 13.5, borderBottom: `1px solid ${line}` };
+
+function SortView({ notify }) {
+  const [sortBy, setSortBy] = useState("bmi");
+  const [order, setOrder] = useState("asc");
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  // /sort returns patient objects without their id, so we cross-reference
+  // against /view (which is keyed by id) to look each row's id back up.
+  const findId = (info, viewData) => {
+    if (!viewData) return null;
+    const hit = Object.entries(viewData).find(([, v]) =>
+      v.name === info.name && v.city === info.city && v.age === info.age &&
+      v.gender === info.gender && v.height === info.height && v.weight === info.weight
+    );
+    return hit ? hit[0] : null;
+  };
+
+  const run = async () => {
+    setLoading(true);
+    try {
+      const [sortRes, viewRes] = await Promise.all([
+        fetch(`${BASE_URL}/sort?sort_by=${sortBy}&order=${order}`),
+        fetch(`${BASE_URL}/view`),
+      ]);
+      if (!sortRes.ok) { notify("error", `Error ${sortRes.status}.`); setLoading(false); return; }
+      const sorted = await sortRes.json();
+      const viewData = viewRes.ok ? await viewRes.json() : null;
+      setRows(sorted.map((info, i) => ({ id: findId(info, viewData) ?? `—`, ...info })));
+    } catch {
+      notify("error", "Couldn't reach the API.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, alignItems: "flex-end" }}>
+        <Field label="Sort by">
+          <select style={inputStyle} value={sortBy} onChange={e => setSortBy(e.target.value)}>
+            <option value="id">ID</option>
+            <option value="name">Name</option>
+            <option value="city">City</option>
+            <option value="age">Age</option>
+            <option value="gender">Gender</option>
+            <option value="height">Height</option>
+            <option value="weight">Weight</option>
+            <option value="bmi">BMI</option>
+          </select>
+        </Field>
+        <Field label="Order">
+          <select style={inputStyle} value={order} onChange={e => setOrder(e.target.value)}>
+            <option value="asc">Ascending</option>
+            <option value="desc">Descending</option>
+          </select>
+        </Field>
+        <Btn onClick={run} disabled={loading}>Sort</Btn>
+      </div>
+      {rows && rows.length === 0 && <p style={{ color: muted, fontSize: 14 }}>No patients on file yet.</p>}
+      {rows && rows.length > 0 && (
+        <div style={{ overflowX: "auto", background: card, border: `1px solid ${line}`, borderRadius: 8 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                {["id", "name", "city", "age", "gender", "height", "weight", "bmi"].map(h => (
+                  <th key={h} style={th}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i}>
+                  <td style={{ ...td, fontFamily: "monospace" }}>{r.id}</td>
+                  <td style={td}>{r.name}</td>
+                  <td style={td}>{r.city}</td>
+                  <td style={td}>{r.age}</td>
+                  <td style={td}>{r.gender}</td>
+                  <td style={td}>{r.height}</td>
+                  <td style={td}>{r.weight}</td>
+                  <td style={{ ...td, fontFamily: "monospace" }}>{r.bmi}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const emptyForm = { id: "", name: "", city: "", age: "", gender: "male", height: "", weight: "" };
+
+function AddView({ notify, onDone }) {
+  const [form, setForm] = useState(emptyForm);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const submit = async () => {
+    if (!form.id || !form.name || !form.city || !form.age || !form.height || !form.weight) {
+      return notify("error", "Please fill in every field.");
+    }
+    try {
+      const r = await fetch(`${BASE_URL}/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, age: Number(form.age), height: Number(form.height), weight: Number(form.weight) }),
+      });
+      if (r.status === 201) { notify("success", "Patient created."); setForm(emptyForm); onDone(); }
+      else { const d = await r.json().catch(() => ({})); notify("error", d.detail || `Error ${r.status}.`); }
+    } catch {
+      notify("error", "Couldn't reach the API.");
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 420 }}>
+      <Field label="Patient ID"><input style={inputStyle} value={form.id} onChange={e => set("id", e.target.value)} placeholder="P001" /></Field>
+      <Field label="Name"><input style={inputStyle} value={form.name} onChange={e => set("name", e.target.value)} /></Field>
+      <Field label="City"><input style={inputStyle} value={form.city} onChange={e => set("city", e.target.value)} /></Field>
+      <Field label="Age"><input type="number" style={inputStyle} value={form.age} onChange={e => set("age", e.target.value)} /></Field>
+      <Field label="Gender">
+        <select style={inputStyle} value={form.gender} onChange={e => set("gender", e.target.value)}>
+          <option value="male">Male</option><option value="female">Female</option><option value="others">Other</option>
+        </select>
+      </Field>
+      <Field label="Height (m)"><input type="number" step="0.01" style={inputStyle} value={form.height} onChange={e => set("height", e.target.value)} /></Field>
+      <Field label="Weight (kg)"><input type="number" step="0.1" style={inputStyle} value={form.weight} onChange={e => set("weight", e.target.value)} /></Field>
+      <Btn onClick={submit}>Create patient</Btn>
+    </div>
+  );
+}
+
+function UpdateView({ notify, onDone }) {
+  const [id, setId] = useState("");
+  const [form, setForm] = useState({ name: "", city: "", age: "", gender: "", height: "", weight: "" });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const submit = async () => {
+    if (!id.trim()) return notify("error", "Enter the patient ID to update.");
+    const payload = {};
+    if (form.name) payload.name = form.name;
+    if (form.city) payload.city = form.city;
+    if (form.age) payload.age = Number(form.age);
+    if (form.gender) payload.gender = form.gender;
+    if (form.height) payload.height = Number(form.height);
+    if (form.weight) payload.weight = Number(form.weight);
+    if (Object.keys(payload).length === 0) return notify("error", "Fill in at least one field to update.");
+
+    try {
+      const r = await fetch(`${BASE_URL}/edit/${id.trim()}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (r.ok) { notify("success", "Patient updated."); onDone(); }
+      else { const d = await r.json().catch(() => ({})); notify("error", d.detail || `Error ${r.status}.`); }
+    } catch {
+      notify("error", "Couldn't reach the API.");
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 420 }}>
+      <Field label="Patient ID"><input style={inputStyle} value={id} onChange={e => setId(e.target.value)} placeholder="P001" /></Field>
+      <p style={{ fontSize: 12.5, color: muted, margin: "-8px 0 14px" }}>Leave a field blank to keep its current value.</p>
+      <Field label="Name"><input style={inputStyle} value={form.name} onChange={e => set("name", e.target.value)} /></Field>
+      <Field label="City"><input style={inputStyle} value={form.city} onChange={e => set("city", e.target.value)} /></Field>
+      <Field label="Age"><input type="number" style={inputStyle} value={form.age} onChange={e => set("age", e.target.value)} /></Field>
+      <Field label="Gender">
+        <select style={inputStyle} value={form.gender} onChange={e => set("gender", e.target.value)}>
+          <option value="">Keep current</option>
+          <option value="male">Male</option><option value="female">Female</option><option value="others">Other</option>
+        </select>
+      </Field>
+      <Field label="Height (m)"><input type="number" step="0.01" style={inputStyle} value={form.height} onChange={e => set("height", e.target.value)} /></Field>
+      <Field label="Weight (kg)"><input type="number" step="0.1" style={inputStyle} value={form.weight} onChange={e => set("weight", e.target.value)} /></Field>
+      <Btn onClick={submit}>Update patient</Btn>
+    </div>
+  );
+}
+
+function DeleteView({ notify, onDone }) {
+  const [id, setId] = useState("");
+  const [confirm, setConfirm] = useState(false);
+
+  const submit = async () => {
+    if (!id.trim()) return notify("error", "Enter the patient ID to delete.");
+    try {
+      const r = await fetch(`${BASE_URL}/delete/${id.trim()}`, { method: "DELETE" });
+      if (r.ok) { notify("success", "Patient deleted."); setId(""); setConfirm(false); onDone(); }
+      else { const d = await r.json().catch(() => ({})); notify("error", d.detail || `Error ${r.status}.`); }
+    } catch {
+      notify("error", "Couldn't reach the API.");
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: 420 }}>
+      <Field label="Patient ID"><input style={inputStyle} value={id} onChange={e => setId(e.target.value)} placeholder="P001" /></Field>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, marginBottom: 16 }}>
+        <input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} />
+        I understand this action is permanent.
+      </label>
+      <Btn variant="danger" onClick={submit} disabled={!confirm}>Delete patient</Btn>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState("all");
+  const [toast, setToast] = useState(null);
+  const notify = (type, msg) => setToast({ type, msg });
+  const goHome = () => setTab("all");
+
+  return (
+    <div style={{ background: paper, minHeight: "100vh" }}>
+      <div style={{ maxWidth: 720, margin: "0 auto", padding: "28px 20px 60px" }}>
+        <h1 style={{ fontFamily: "Georgia, serif", fontSize: 26, margin: "0 0 2px" }}>Patient records</h1>
+        <p style={{ fontSize: 13, color: muted, margin: "0 0 22px" }}>Connected to {BASE_URL}</p>
+
+        <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${line}`, marginBottom: 22, flexWrap: "wrap" }}>
+          {TABS.map(t => {
+            const active = tab === t.id;
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                padding: "9px 14px",
+                background: active ? card : "transparent",
+                border: `1px solid ${active ? line : "transparent"}`,
+                borderBottom: active ? `1px solid ${card}` : "1px solid transparent",
+                marginBottom: -1, borderRadius: "6px 6px 0 0",
+                color: active ? forestDark : muted, fontSize: 13.5, fontWeight: active ? 600 : 400,
+                cursor: "pointer",
+              }}>{t.label}</button>
+            );
+          })}
+        </div>
+
+        <Toast toast={toast} onClose={() => setToast(null)} />
+
+        {tab === "all" && <AllPatientsView notify={notify} />}
+        {tab === "view" && <FindView notify={notify} />}
+        {tab === "sort" && <SortView notify={notify} />}
+        {tab === "add" && <AddView notify={notify} onDone={goHome} />}
+        {tab === "update" && <UpdateView notify={notify} onDone={goHome} />}
+        {tab === "delete" && <DeleteView notify={notify} onDone={goHome} />}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
